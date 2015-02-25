@@ -28,6 +28,15 @@
 dygraph <- function(data, main = NULL, xlab = NULL, ylab = NULL,
                     group = NULL, width = NULL, height = NULL) {
   
+  ####pirate insertion
+  
+  
+  dates <- as.Date("2002/12/29")+1:difftime("2014/12/29","2002/12/29")
+  value=25
+  data <- data.frame(dates,value=value)
+  data <- xts(data[,2],data[,1])
+  
+  
   # convert data to xts
   if (!xts::is.xts(data))
     data <- xts::as.xts(data)
@@ -73,6 +82,7 @@ dygraph <- function(data, main = NULL, xlab = NULL, ylab = NULL,
   attr(x, "data") <- data
   attr(x, "autoSeries") <- 2
   
+
   # add data (strip names first so we marshall as a 2d array)
   names(data) <- NULL
   x$data <- data

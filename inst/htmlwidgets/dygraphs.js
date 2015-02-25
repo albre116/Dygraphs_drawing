@@ -3,9 +3,75 @@ HTMLWidgets.widget({
   name: "dygraphs",
 
   type: "output",
+  
+  setPoint: function(event, g, context){
+        var graphPos = Dygraph.findPos(g.graphDiv);
+        var canvasx = Dygraph.pageX(event) - graphPos.x;
+        var canvasy = Dygraph.pageY(event) - graphPos.y;
+        var xy = g.toDataCoords(canvasx, canvasy);
+        var x = xy[0], value = xy[1];
+        var rows = g.numRows();
+        var closest_row = -1;
+        var smallest_diff = -1;
+        // TODO(danvk): binary search
+        for (var row = 0; row < rows; row++) {
+          var date = g.getValue(row, 0);  // millis
+          var diff = Math.abs(date - x);
+          if (smallest_diff < 0 || diff < smallest_diff) {
+            smallest_diff = diff;
+            closest_row = row;
+          }
+        }
 
+        if (closest_row != -1) {
+          if (instance.lastDrawRow === null) {
+            instance.lastDrawRow = closest_row;
+            instance.lastDrawValue = value;
+          }
+          var coeff = (value - instance.lastDrawValue) / (closest_row - instance.lastDrawRow);
+          if (closest_row == instance.lastDrawRow) coeff = 0.0;
+          var minRow = Math.min(instance.lastDrawRow, closest_row);
+          var maxRow = Math.max(instance.lastDrawRow, closest_row);
+          for (var row = minRow; row <= maxRow; row++) {
+            if (tool == 'pencil') {
+              var val = instance.lastDrawValue + coeff * (row - instance.lastDrawRow);
+              val = Math.max(valueRange[0], Math.min(val, valueRange[1]));
+              data[row][1] = val;
+              if (val === null || value === undefined || isNaN(val)) {
+                console.log(val);
+              }
+            } else if (tool == 'eraser') {
+              data[row][1] = null;
+            }
+          }
+          instance.lastDrawRow = closest_row;
+          instance.lastDrawValue = value;
+          g.updateOptions({ file: data });
+          g.setSelection(closest_row);  // prevents the dot from being finnicky.
+        }
+      },
+  
+  
+  finishDraw: function() {
+        instance.isDrawing = false;
+        instance.lastDrawRow = null;
+        instance.lastDrawValue = null;
+      },
+      
+      
+
+      
+  
   initialize: function(el, width, height) { 
-    return {};
+    
+    
+    return {
+      isDrawing: false,
+      lastDrawRow: null, 
+      lastDrawValue:null,
+      tool: 'pencil',
+      valueRange: [0, 200]};
+      
   },
 
   resize: function(el, width, height, instance) {
@@ -14,6 +80,17 @@ HTMLWidgets.widget({
   },
 
   renderValue: function(el, x, instance) {
+      //var isDrawing = instance.isDrawing;
+      //var lastDrawRow = instance.lastDrawRow;
+      //var lastDrawValue = instance.lastDrawValue;
+      var tool = instance.tool;
+      var valueRange = instance.valueRange;
+      alert("Last Draw Row:"+instance.lastDrawRow);
+
+
+
+
+    
     
     // reference to this for closures
     var thiz = this;
@@ -96,7 +173,74 @@ HTMLWidgets.widget({
       }
       
       // create the instance and add it to it's group (if any)
-      instance.dygraph = new Dygraph(el, attrs.file, attrs);
+      instance.dygraph = new Dygraph(el, attrs.file, {
+            valueRange: valueRange,
+            labels: [ 'Date', 'Value' ],
+            interactionModel: {
+              mousedown: function (event, g, context) {
+                if (tool == 'zoom') {
+                  Dygraph.defaultInteractionModel.mousedown(event, g, context);
+                } else {
+                  // prevents mouse drags from selecting page text.
+                  if (event.preventDefault) {
+                    event.preventDefault();  // Firefox, Chrome, etc.
+                  } else {
+                    event.returnValue = false;  // IE
+                    event.cancelBubble = true;
+                  }
+                  instance.isDrawing = true;
+                  setPoint(event, g, context); 
+                }
+              },
+              mousemove: function (event, g, context) {
+                if (tool == 'zoom') {
+                  Dygraph.defaultInteractionModel.mousemove(event, g, context);
+                } else {
+                  if (!instance.isDrawing) return;
+                  setPoint(event, g, context);
+                }
+              },
+              mouseup: function(event, g, context) {
+                if (tool == 'zoom') {
+                  Dygraph.defaultInteractionModel.mouseup(event, g, context);
+                } else {
+                  finishDraw();
+                }
+              },
+              mouseout: function(event, g, context) {
+                if (tool == 'zoom') {
+                  Dygraph.defaultInteractionModel.mouseout(event, g, context);
+                }
+              },
+              dblclick: function(event, g, context) {
+                Dygraph.defaultInteractionModel.dblclick(event, g, context);
+              },
+              mousewheel: function(event, g, context) {
+                var normal = event.detail ? event.detail * -1 : event.wheelDelta / 40;
+                var percentage = normal / 50;
+                var axis = g.xAxisRange();
+                var xOffset = g.toDomCoords(axis[0], null)[0];
+                var x = event.offsetX - xOffset;
+                var w = g.toDomCoords(axis[1], null)[0] - xOffset;
+                var xPct = w === 0 ? 0 : (x / w);
+
+                var delta = axis[1] - axis[0];
+                var increment = delta * percentage;
+                var foo = [increment * xPct, increment * (1 - xPct)];
+                var dateWindow = [ axis[0] + foo[0], axis[1] - foo[1] ];
+
+                g.updateOptions({
+                  dateWindow: dateWindow
+                });
+                Dygraph.cancelEvent(event);
+              }
+            },
+            strokeWidth: 1.5,
+            gridLineColor: 'rgb(196, 196, 196)',
+            drawYGrid: false,
+            drawYAxis: false
+          });
+      
       if (x.group != null)
         this.groups[x.group].push(instance.dygraph);
     }
@@ -551,4 +695,3 @@ HTMLWidgets.widget({
   }
   
 });
-

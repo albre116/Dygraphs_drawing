@@ -12,7 +12,6 @@ shinyServer(function(input, output) {
   
   output$dygraph <- renderDygraph({
     dygraph(predicted(), main = "Predicted Deaths/Month") %>%
-      dySeries(c("lwr", "fit", "upr"), label = "Deaths") %>%
       dyOptions(drawGrid = input$showgrid)
   })
   
